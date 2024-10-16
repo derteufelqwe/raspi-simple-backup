@@ -9,18 +9,29 @@ async function extractManifest(path: string) {
     const manifest = JSON.parse(manifestData.toString());
 
     const filenameSplits = path.replace('\\', '/').split('/');
-    const manifest_files = manifest['files'];
-    const files = Object.keys(manifest_files).map(filename => ({
-        filename: filename,
-        checksum: manifest_files[filename].checksum,
-        size: manifest_files[filename].size,
-    } satisfies BackupFile))
+    try {
+        const manifest_files = manifest['files'];
+        const files = Object.keys(manifest_files).map(filename => ({
+            filename: filename,
+            checksum: manifest_files[filename].checksum,
+            size: manifest_files[filename].size,
+        } satisfies BackupFile))
+
+        return {
+            filename: filenameSplits[filenameSplits.length - 1],
+            timestamp: manifest['timestamp'],
+            files: files.sort((a, b) => b.size - a.size),
+            size: manifest['size'],
+        } satisfies BackupArchive;
+    } catch (e) {
+        console.warn(`Failed to extract manifest: ${e}`);
+    }
 
     return {
         filename: filenameSplits[filenameSplits.length - 1],
         timestamp: manifest['timestamp'],
-        files: files.sort((a, b) => b.size - a.size),
-        size: manifest['size'],
+        files: [],
+        size: 0,
     } satisfies BackupArchive;
 }
 
