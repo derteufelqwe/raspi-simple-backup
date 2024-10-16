@@ -15,6 +15,9 @@ jobs:
         with:
           fetch-depth: 0  # Fetch all history. Otherwise, detecting branch fails
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -28,11 +31,19 @@ jobs:
       - name: Get release tag
         run: echo "RELEASE_TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
 
-      - name: Create release build
-        run: docker tag ghcr.io/${{ github.repository }}/backups-website:latest ghcr.io/${{ github.repository }}/backups-website:${{ env.RELEASE_TAG }}
+      - name: Build and push Docker images
+        run: |
+          docker buildx create --use
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --tag ghcr.io/${{ github.repository }}/backups-website:latest \
+            --tag ghcr.io/${{ github.repository }}/backups-website:${{ env.RELEASE_TAG }} \
+            --push .
 
-      - name: Push Docker release image to GHCR
-        run: docker push ghcr.io/${{ github.repository }}/backups-website:latest
-
-      - name: Push Docker tag image to GHCR
-        run: docker push ghcr.io/${{ github.repository }}/backups-website:${{ env.RELEASE_TAG }}
+#      - name: Create release build
+#        run: docker tag ghcr.io/${{ github.repository }}/backups-website:latest ghcr.io/${{ github.repository }}/backups-website:${{ env.RELEASE_TAG }}
+#
+#      - name: Push Docker release image to GHCR
+#        run: docker push ghcr.io/${{ github.repository }}/backups-website:latest
+#
+#      - name: Push Docker tag image to GHCR
+#        run: docker push ghcr.io/${{ github.repository }}/backups-website:${{ env.RELEASE_TAG }}

@@ -43,3 +43,6 @@ The following command compiles and runs the node server
 pnpm run build
 node build 
 ```
+
+## Use the docker image
+
