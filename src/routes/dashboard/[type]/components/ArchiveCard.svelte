@@ -29,6 +29,22 @@
         return Math.floor(ageMs / (1000 * 3600 * 24));  // ms -> days
     }
 
+    function formatByte(bytes: number) {
+        const units = ["Bytes", "KB", "MB", "GB", "TB"]
+        let idx = 0;
+
+        while (bytes > 1000) {
+            bytes /= 1000;
+            idx++;
+        }
+
+        return `${Math.round(bytes * 100) / 100} ${units[idx]}`;
+    }
+
+    function calcSizePercentage(size: number) {
+        return Math.round(size / data.size * 10000) / 100;
+    }
+
 </script>
 
 
@@ -47,7 +63,7 @@
                     <Badge variant="outline" class="border-amber-500 bg-amber-200">{getAgeInDays(data.timestamp)} days ago</Badge>
                 </div>
                 <div>
-                    <Badge variant="outline" class="border-blue-500 bg-blue-200">123 MB</Badge>
+                    <Badge variant="outline" class="border-blue-500 bg-blue-200">{formatByte(data.size)}</Badge>
                 </div>
                 <div class="ml-auto">
                     <Collapsible.Trigger asChild let:builder>
@@ -69,14 +85,16 @@
                             <Table.Head>Filename</Table.Head>
                             <Table.Head>Checksum</Table.Head>
                             <Table.Head>Size</Table.Head>
+                            <Table.Head>Percentage</Table.Head>
                         </Table.Row>
                     </Table.Header>
                     <Table.Body>
-                        {#each data.checksums as checksum}
+                        {#each data.files as file}
                             <Table.Row>
-                                <Table.Cell class="font-medium">{checksum.file}</Table.Cell>
-                                <Table.Cell class="font-mono">{checksum.checksum}</Table.Cell>
-                                <Table.Cell>???</Table.Cell>
+                                <Table.Cell class="font-medium">{file.filename}</Table.Cell>
+                                <Table.Cell class="font-mono">{file.checksum}</Table.Cell>
+                                <Table.Cell>{formatByte(file.size)}</Table.Cell>
+                                <Table.Cell>{calcSizePercentage(file.size)}%</Table.Cell>
                             </Table.Row>
                         {/each}
                     </Table.Body>

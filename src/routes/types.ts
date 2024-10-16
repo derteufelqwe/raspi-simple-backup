@@ -1,10 +1,12 @@
 export interface BackupArchive {
     filename: string
     timestamp: string
-    checksums: FileChecksum[]
+    files: BackupFile[]
+    size: number
 }
 
-export interface FileChecksum {
-    file: string
+export interface BackupFile {
+    filename: string
     checksum: string
+    size: number
 }

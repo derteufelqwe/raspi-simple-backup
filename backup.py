@@ -16,9 +16,9 @@ from subprocess import Popen, PIPE
 import fnmatch
 import zlib
 import re
+import hashlib
 
-
-RE_BACKUP_FILE = re.compile(f'backup_(\d+-\d+-\d+)\.zip')
+RE_BACKUP_FILE = re.compile(r'backup_(\d+-\d+-\d+)\.zip')
 
 
 class ConfigurationError(Exception):
@@ -98,7 +98,7 @@ logger_config = {
 }
 
 
-def _get_folders_files(path: str, absolute=False):
+def _get_folders_files(path: Path, absolute=False):
     elements = os.listdir(path)
     directories = [e for e in elements if os.path.isdir(os.path.join(path, e))]
     files = [e for e in elements if os.path.isfile(os.path.join(path, e))]
@@ -158,9 +158,16 @@ def run_command_before_backup(command: str):
     duration = round(time.time() - t1, 4)
 
     if returncode != 0:
-        raise CommandError(f"Command '{command}' failed with exit code {returncode}.\nStdout: {p.stdout.read()}\nStderr: {p.stderr.read()}")
+        raise CommandError(
+            f"Command '{command}' failed with exit code {returncode}.\nStdout: {p.stdout.read()}\nStderr: {p.stderr.read()}")
 
     log.info(f"    Command finished after {duration} seconds")
+
+
+def _create_unique_archive_name(path: str, folder_name: str) -> str:
+    """ Creates a unique name for an archive. This is required so that two folders with the same name can be backed up """
+    path_hash = hashlib.md5(path.encode()).hexdigest()
+    return f'{path_hash}_{folder_name}.zip'
 
 
 def handle_backup_folder(config: dict, output_dir: str, path: str):
@@ -170,7 +177,7 @@ def handle_backup_folder(config: dict, output_dir: str, path: str):
 
     if folder_config.get('ignore', 'false') in (True, 'true', 'True'):
         log.info(f"  Folder '{folder_name}' is ignored.")
-        return
+        return dict()
 
     log.info(f"  Creating backup for folder '{folder_name}'")
 
@@ -179,10 +186,12 @@ def handle_backup_folder(config: dict, output_dir: str, path: str):
 
     to_exclude = folder_config.get('exclude', '')
     t1 = time.time()
-    _create_zip_from_directory(path, os.path.join(output_dir, folder_name + '.zip'), to_exclude)
+    output_file_name = os.path.join(output_dir, _create_unique_archive_name(path, folder_name))
+    _create_zip_from_directory(path, output_file_name, to_exclude)
     duration = round(time.time() - t1, 4)
 
     log.info(f'  -> Backup took {duration} seconds')
+    return {output_file_name: path}
 
 
 def check_disk_size(path: Path, max_percentage: float):
@@ -200,41 +209,54 @@ def check_disk_size(path: Path, max_percentage: float):
 def process_input_path(config: dict, temp_dir: str, path: str):
     """
     Analyze all input folders and submit them to backup if required.
+    Returns a name mapping, which maps the archive filename to the folders absolut path.
     """
 
     log.info(f'Checking input path: {path}')
 
     directories, files = _get_folders_files(path)
 
+    name_mapping = dict()
+
     if 'backup.yaml' in files:
-        handle_backup_folder(config, temp_dir, path)
+        name_mapping.update(handle_backup_folder(config, temp_dir, path))
     else:
         for directory in directories:
             _, files = _get_folders_files(os.path.join(path, directory))
             if 'backup.yaml' in files:
-                handle_backup_folder(config, temp_dir, os.path.join(path, directory))
+                name_mapping.update(handle_backup_folder(config, temp_dir, os.path.join(path, directory)))
             else:
                 log.warning(f"  Folder '{directory}' does not contain a backup.yaml file")
 
+    return name_mapping
 
-def _calculate_checksum(filename, chunksize=65536):
+
+def _calculate_checksum(filename: str, chunksize=65536):
     """ Compute the CRC-32 checksum of the contents of the given filename """
 
     with open(filename, "rb") as f:
         checksum = 0
-        while (chunk := f.read(chunksize)) :
+        while chunk := f.read(chunksize):
             checksum = zlib.crc32(chunk, checksum)
         return hex(checksum)
 
 
-def create_manifest_file(temp_dir: Path):
+def _manifest_create_file_entry(filename: str):
+    return {
+        'filename': Path(filename).name,
+        'checksum': _calculate_checksum(filename),
+        'size': os.path.getsize(filename),
+    }
+
+
+def create_manifest_file(temp_dir: Path, name_mapping: dict):
     """ Creates a manifest file, which contains information about the backup archive """
 
     zipfiles = [f for f in _get_folders_files(temp_dir, absolute=True)[1] if f.endswith('.zip')]
 
     manifest_data = {
         'timestamp': datetime.now().isoformat(),
-        'checksums': {Path(f).name: _calculate_checksum(f) for f in zipfiles},
+        'files': {name_mapping[f]: _manifest_create_file_entry(f) for f in zipfiles},
         'size': sum([os.path.getsize(f) for f in zipfiles]),
     }
 
@@ -329,18 +351,19 @@ def main(config_path: str):
             exit()
 
         # --- Perform the actual backup
+        name_mapping = dict()
         t1 = time.time()
         with tempfile.TemporaryDirectory() as temp_dir:
             for input_path in config['input_paths']:
-                process_input_path(config, temp_dir, input_path.replace('\\', '/').replace('/', os.sep))
+                name_mapping.update(process_input_path(config, temp_dir, input_path.replace('\\', '/').replace('/', os.sep)))
 
             # shutil.make_archive(f'{temp_dir}/backup_final', 'zip', temp_dir)
             with tempfile.TemporaryDirectory() as temp_out_dir:
-                create_manifest_file(temp_dir)
+                create_manifest_file(Path(temp_dir), name_mapping)
                 _create_zip_from_directory(temp_dir, f'{temp_out_dir}/backup_final.zip', '', compression=0)
                 on_backup_completed(config, output_path, temp_out_dir)
 
-            duration = round(time.time() - t1, 4)
+            duration = round(time.time() - t1)
             log.info(f"Finished backup process after {duration} seconds")
 
     except Exception as e:

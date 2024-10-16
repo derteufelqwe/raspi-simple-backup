@@ -1,26 +1,32 @@
-import { readdir } from 'fs/promises';
+import {readdir} from 'fs/promises';
 import {PUBLIC_BACKUPS_DIR} from "$env/static/public";
 import StreamZip from 'node-stream-zip';
-import type { BackupArchive, FileChecksum } from "../../../types.js";
+import type {BackupArchive, BackupFile} from "../../../types.js";
 
 
 async function extractManifest(path: string) {
-    const zip = new StreamZip.async({ file: path });
+    const zip = new StreamZip.async({file: path});
     const manifestData = await zip.entryData('manifest.json');
     const manifest = JSON.parse(manifestData.toString());
 
     const filenameSplits = path.replace('\\', '/').split('/');
-    const checksums = manifest['checksums'];
+    const manifest_files = manifest['files'];
+    const files = Object.keys(manifest_files).map(filename => ({
+        filename: filename,
+        checksum: manifest_files[filename].checksum,
+        size: manifest_files[filename].size,
+    } satisfies BackupFile))
 
     return {
         filename: filenameSplits[filenameSplits.length - 1],
         timestamp: manifest['timestamp'],
-        checksums: Object.keys(checksums).map(k => ({file: k, checksum: checksums[k] as string} satisfies FileChecksum)),
+        files: files.sort((a, b) => b.size - a.size),
+        size: manifest['size'],
     } satisfies BackupArchive;
 }
 
 
-export async function GET({ url, params }) {
+export async function GET({url, params}) {
     const type = params.type;
     if (!["daily", "weekly", "monthly", "yearly"].includes(type)) {
         throw new Error("Invalid type value");
