@@ -5,7 +5,7 @@ on:
     types: [created]
 
 jobs:
-  teamcity-trigger:
+  build-container:
     runs-on: ubuntu-latest
 
     steps:

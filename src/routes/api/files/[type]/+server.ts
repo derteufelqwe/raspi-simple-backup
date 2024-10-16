@@ -1,5 +1,4 @@
 import {readdir} from 'fs/promises';
-import {PUBLIC_BACKUPS_DIR} from "$env/static/public";
 import StreamZip from 'node-stream-zip';
 import type {BackupArchive, BackupFile} from "../../../types.js";
 
@@ -32,7 +31,11 @@ export async function GET({url, params}) {
         throw new Error("Invalid type value");
     }
 
-    let path = PUBLIC_BACKUPS_DIR + '/' + type;
+    if (process.env.BACKUPS_DIR == undefined) {
+        throw new Error("Invalid BACKUPS_DIR");
+    }
+
+    let path = process.env.BACKUPS_DIR + '/' + type;
     let rawFiles: string[] = await readdir(path);
 
     let asyncFiles = rawFiles.map(f => extractManifest(path + '/' + f));
